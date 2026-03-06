@@ -61,10 +61,9 @@ except Exception as e:
 # 3. Grad-CAM Logic
 def get_gradcam(img_batch, model, last_conv_layer_name):
     try:
-        # Build a model that maps the input to activations of the last conv layer + predictions
         grad_model = tf.keras.models.Model(
-            inputs=model.inputs,
-            outputs=[model.get_layer(last_conv_layer_name).output, model.output]
+            [model.inputs],
+            [model.get_layer(last_conv_layer_name).output, model.output]
         )
 
         with tf.GradientTape() as tape:
@@ -72,21 +71,20 @@ def get_gradcam(img_batch, model, last_conv_layer_name):
             class_idx = tf.argmax(predictions[0])
             loss = predictions[:, class_idx]
 
-        # Compute gradients of the top predicted class wrt conv layer outputs
         grads = tape.gradient(loss, conv_outputs)
 
-        # Global average pooling of gradients (weights for each channel)
+        # global average pooling on gradients
         pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
 
-        # Apply weights to feature maps
-        conv_outputs = conv_outputs[0]  # shape (H, W, C)
-        conv_outputs = conv_outputs * pooled_grads  # elementwise multiply, broadcasting works
+        conv_outputs = conv_outputs[0]
 
-        # Average across channels to get heatmap
-        heatmap = tf.reduce_mean(conv_outputs, axis=-1)
+        # weight the channels
+        heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
+        heatmap = tf.squeeze(heatmap)
 
-        # Normalize between 0 and 1
+        # normalize
         heatmap = tf.maximum(heatmap, 0) / (tf.reduce_max(heatmap) + 1e-10)
+
         return heatmap.numpy()
 
     except Exception as e:
