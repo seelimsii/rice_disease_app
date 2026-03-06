@@ -16,7 +16,7 @@ st.markdown("""
     .main { background-color: #f5f7f9; }
     .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     </style>
-    """, unsafe_allow_stdio=True)
+    """, unsafe_allow_html=True)
 
 st.title("🌾 Rice Disease AI Diagnostic Tool")
 st.write("Upload a clear photo of a rice leaf to identify diseases and get AI-powered treatment advice.")
