@@ -61,25 +61,36 @@ except Exception as e:
 # 3. Grad-CAM Logic
 def get_gradcam(img_batch, model, last_conv_layer_name):
     try:
+        # 1. Create a model that maps input to the activations of the last conv layer as well as the output
         grad_model = tf.keras.models.Model(
-            [model.inputs], [model.get_layer(last_conv_layer_name).output, model.output]
+            inputs=[model.inputs], 
+            outputs=[model.get_layer(last_conv_layer_name).output, model.output]
         )
+        
         with tf.GradientTape() as tape:
-            conv_output, predictions = grad_model(img_batch)
+            # We must ensure img_batch is a float32 tensor
+            img_batch_tensor = tf.cast(img_batch, tf.float32)
+            conv_outputs, predictions = grad_model(img_batch_tensor)
+            
+            # Find the index of the winning class
             class_idx = tf.argmax(predictions[0])
             loss = predictions[:, class_idx]
-
-        grads = tape.gradient(loss, conv_output)
-        pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
-        conv_output = conv_output[0]
+        # 2. Extract gradients for the winning class with respect to the output feature map
+        grads = tape.gradient(loss, conv_outputs)
         
-        # Heatmap math
-        heatmap = conv_output @ pooled_grads[..., tf.newaxis]
+        # 3. Vector of shape (1024,), where each entry is the mean intensity of the gradient over a specific feature map channel
+        pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+        
+        # 4. Multiply each channel in the feature map by "how important it is"
+        conv_outputs = conv_outputs[0]
+        heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
         heatmap = tf.squeeze(heatmap)
+        
+        # 5. Normalize the heatmap
         heatmap = tf.maximum(heatmap, 0) / (tf.math.reduce_max(heatmap) + 1e-10)
         return heatmap.numpy()
     except Exception as e:
-        st.sidebar.error(f"Grad-CAM Error: {e}")
+        st.error(f"Grad-CAM error: {e}")
         return None
 
 # 4. User Interface
@@ -103,7 +114,7 @@ if uploaded_file and model and class_names:
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        st.image(img, caption="Uploaded Image", use_container_width=True)
+        st.image(img, caption="Uploaded Image", width="stretch")
         st.metric("Detected Status", disease, f"{confidence:.1f}% Match")
 
     with col2:
