@@ -61,36 +61,39 @@ except Exception as e:
 # 3. Grad-CAM Logic
 def get_gradcam(img_batch, model, last_conv_layer_name):
     try:
-        # 1. Create a model that maps input to the activations of the last conv layer as well as the output
+        # Create a sub-model that outputs both the last conv layer and the final prediction
         grad_model = tf.keras.models.Model(
-            inputs=[model.inputs], 
+            inputs=model.inputs, 
             outputs=[model.get_layer(last_conv_layer_name).output, model.output]
         )
         
         with tf.GradientTape() as tape:
-            # We must ensure img_batch is a float32 tensor
-            img_batch_tensor = tf.cast(img_batch, tf.float32)
-            conv_outputs, predictions = grad_model(img_batch_tensor)
+            # IMPORTANT: Your model summary shows the input is named 'input_layer'
+            # We must pass the data as a dictionary to satisfy the Functional API
+            inputs = {"input_layer": tf.cast(img_batch, tf.float32)}
+            conv_outputs, predictions = grad_model(inputs)
             
-            # Find the index of the winning class
+            # Find the index of the highest predicted class
             class_idx = tf.argmax(predictions[0])
             loss = predictions[:, class_idx]
-        # 2. Extract gradients for the winning class with respect to the output feature map
+
+        # Extract gradients for the winning class
         grads = tape.gradient(loss, conv_outputs)
         
-        # 3. Vector of shape (1024,), where each entry is the mean intensity of the gradient over a specific feature map channel
+        # Average the gradients across the height and width (Global Average Pooling)
         pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
         
-        # 4. Multiply each channel in the feature map by "how important it is"
+        # Weighted sum of the feature map channels
         conv_outputs = conv_outputs[0]
         heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
         heatmap = tf.squeeze(heatmap)
         
-        # 5. Normalize the heatmap
+        # Normalize the heatmap between 0 and 1
         heatmap = tf.maximum(heatmap, 0) / (tf.math.reduce_max(heatmap) + 1e-10)
         return heatmap.numpy()
     except Exception as e:
-        st.error(f"Grad-CAM error: {e}")
+        # This will show you the exact error in the UI if it fails
+        st.error(f"Grad-CAM detail: {e}")
         return None
 
 # 4. User Interface
@@ -118,23 +121,26 @@ if uploaded_file and model and class_names:
         st.metric("Detected Status", disease, f"{confidence:.1f}% Match")
 
     with col2:
-        # We use the specific DenseNet layer you identified earlier
+        # Ensure we target 'relu' as identified in your model summary
         heatmap = get_gradcam(img_batch, model, "relu")
         
         if heatmap is not None:
-            # Colorize and overlay
+            # 1. Resize heatmap to match the original image size
             heatmap_resized = cv2.resize(heatmap, (img.size[0], img.size[1]))
+            
+            # 2. Convert to heat colors (JET)
             heatmap_uint8 = np.uint8(255 * heatmap_resized)
             heatmap_color = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
             
-            # Convert BGR to RGB for Streamlit
+            # 3. Convert BGR to RGB
             heatmap_color_rgb = cv2.cvtColor(heatmap_color, cv2.COLOR_BGR2RGB)
             
-            # Overlay original with heatmap (50% transparency)
+            # 4. Create the overlay (60% leaf, 40% heatmap)
             overlayed_img = cv2.addWeighted(np.array(img), 0.6, heatmap_color_rgb, 0.4, 0)
-            st.image(overlayed_img, caption="AI Diagnosis Areas (Heatmap)", use_container_width=True)
+            
+            st.image(overlayed_img, caption="AI Focus Areas (Heatmap)", width="stretch")
         else:
-            st.info("Visual explanation (Heatmap) not available for this model architecture.")
+            st.info("Visual explanation (Heatmap) not available. Check layer name 'relu'.")
 
     # --- AI ADVICE SECTION ---
     st.divider()
