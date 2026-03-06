@@ -155,7 +155,7 @@ if uploaded_file and model and class_names:
             """
             try:
                 response = client.models.generate_content(
-                    model="	gemini-3-flash-preview", # Using 1.5-Flash for better stability in production
+                    model="gemini-3-flash-preview", # Using 1.5-Flash for better stability in production
                     contents=prompt
                 )
                 st.markdown(response.text)
