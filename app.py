@@ -122,7 +122,7 @@ if uploaded_file and model and class_names:
 
     with col2:
         # Ensure we target 'relu' as identified in your model summary
-        heatmap = get_gradcam(img_batch, model, "relu")
+        heatmap = get_gradcam(img_batch, model, "dense")
         
         if heatmap is not None:
             # 1. Resize heatmap to match the original image size
