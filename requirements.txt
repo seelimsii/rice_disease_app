@@ -3,5 +3,4 @@ tensorflow-cpu
 google-genai
 numpy
 opencv-python-headless
-matplotlib
 pillow
