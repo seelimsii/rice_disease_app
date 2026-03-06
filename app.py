@@ -108,7 +108,7 @@ if uploaded_file and model and class_names:
 
     with col2:
         # We use the specific DenseNet layer you identified earlier
-        heatmap = get_gradcam(img_batch, model, "conv5_block16_concat")
+        heatmap = get_gradcam(img_batch, model, "relu")
         
         if heatmap is not None:
             # Colorize and overlay
