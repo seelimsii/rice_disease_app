@@ -1,0 +1,7 @@
+streamlit
+tensorflow
+google-genai
+numpy
+opencv-python
+matplotlib
+pillow
