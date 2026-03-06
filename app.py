@@ -86,9 +86,18 @@ if uploaded_file and model:
         if "GEMINI_API_KEY" in st.secrets:
             client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
             st.subheader("🤖 AI Treatment Advice")
+            prompt = f"""
+            The rice plant leaf is diagnosed with {disease} (Confidence: {confidence:.1f}%).
+            Explain in short, simple, farmer-friendly bullet points:
+            1. What is this disease?
+            2. Primary cause?
+            3. Recommended organic and chemical treatments.
+            4. Should the leaf be removed?
+            5. One simple prevention tip.
+            """
             response = client.models.generate_content(
-                model="gemini-2.0-flash", 
-                contents=f"How to treat {disease} in rice plants? Give 3 bullet points."
+                model="	gemini-3-flash-preview", 
+                contents=prompt
             )
             st.markdown(response.text)
             
