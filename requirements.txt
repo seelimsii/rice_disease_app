@@ -1,7 +1,7 @@
 streamlit
-tensorflow
+tensorflow-cpu
 google-genai
 numpy
-opencv-python
+opencv-python-headless
 matplotlib
 pillow
