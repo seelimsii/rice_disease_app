@@ -6,6 +6,7 @@ import json
 import os
 from google import genai
 from PIL import Image
+import urllib.request
 
 # 1. Page Configuration
 st.set_page_config(page_title="Rice Disease Guardian", layout="wide", page_icon="🌾")
@@ -24,22 +25,22 @@ st.write("Upload a clear photo of a rice leaf to identify diseases and get AI-po
 # 2. Resource Loading (Cached for Speed)
 @st.cache_resource
 def load_all_resources():
-    # Load the CNN Model
-    if not os.path.exists("rice_disease_model.h5"):
-        st.error("Model file 'rice_disease_model.h5' not found in repository!")
-        return None, None
+    model_path = "rice_disease_model.h5"
     
-    model = tf.keras.models.load_model("rice_disease_model.h5")
+    # DOWNLOAD THE MODEL IF MISSING
+    if not os.path.exists(model_path):
+        with st.spinner("Downloading AI Model from GitHub (this happens once)..."):
+            # PASTE YOUR DIRECT LINK BELOW
+            url = "https://github.com/seelimsii/rice_disease_app/releases/download/v1.0.0/rice_disease_model.h5"
+            urllib.request.urlretrieve(url, model_path)
+            st.success("Model downloaded!")
+
+    # Now load it normally
+    model = tf.keras.models.load_model(model_path)
     
-    # Load Class Indices
-    if not os.path.exists("class_indices.json"):
-        st.error("Indices file 'class_indices.json' not found!")
-        return model, None
-        
     with open("class_indices.json", "r") as f:
         indices = json.load(f)
     
-    # Reverse the dict: {0: "Blast", 1: "Blight", ...}
     class_names = {int(v): k for k, v in indices.items()}
     return model, class_names
 
