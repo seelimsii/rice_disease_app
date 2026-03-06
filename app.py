@@ -7,7 +7,7 @@ import os
 from google import genai
 from PIL import Image
 import urllib.request
-
+tf.config.run_functions_eagerly(True)
 # 1. Page Configuration
 st.set_page_config(page_title="Rice Disease Guardian", layout="wide", page_icon="🌾")
 
