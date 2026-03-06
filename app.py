@@ -59,83 +59,60 @@ except Exception as e:
     client = None
 
 # 3. Grad-CAM Logic
-def get_gradcam(img_batch, model, last_conv_layer_name):
+def get_gradcam(img_batch, model, layer_name="relu"):
     try:
-        # 1. Create a model that maps input to the activations of the last conv layer as well as the output
         grad_model = tf.keras.models.Model(
-            inputs=[model.inputs], 
-            outputs=[model.get_layer(last_conv_layer_name).output, model.output]
+            inputs=model.inputs,
+            outputs=[model.get_layer(layer_name).output, model.output]
         )
-        
         with tf.GradientTape() as tape:
-            # We must ensure img_batch is a float32 tensor
-            img_batch_tensor = tf.cast(img_batch, tf.float32)
-            conv_outputs, predictions = grad_model(img_batch_tensor)
-            
-            # Find the index of the winning class
-            class_idx = tf.argmax(predictions[0])
-            loss = predictions[:, class_idx]
-        # 2. Extract gradients for the winning class with respect to the output feature map
+            # Match 'input_layer' name from your model summary
+            inputs = {"input_layer": tf.cast(img_batch, tf.float32)}
+            conv_outputs, predictions = grad_model(inputs)
+            loss = predictions[:, tf.argmax(predictions[0])]
+
         grads = tape.gradient(loss, conv_outputs)
-        
-        # 3. Vector of shape (1024,), where each entry is the mean intensity of the gradient over a specific feature map channel
         pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
-        
-        # 4. Multiply each channel in the feature map by "how important it is"
-        conv_outputs = conv_outputs[0]
-        heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
-        heatmap = tf.squeeze(heatmap)
-        
-        # 5. Normalize the heatmap
-        heatmap = tf.maximum(heatmap, 0) / (tf.math.reduce_max(heatmap) + 1e-10)
-        return heatmap.numpy()
+        heatmap = conv_outputs[0] @ pooled_grads[..., tf.newaxis]
+        heatmap = tf.squeeze(heatmap).numpy()
+        heatmap = np.maximum(heatmap, 0) / (np.max(heatmap) + 1e-10)
+        return heatmap
     except Exception as e:
-        st.error(f"Grad-CAM error: {e}")
+        st.warning(f"Grad-CAM Detail: {e}")
         return None
 
-# 4. User Interface
-uploaded_file = st.file_uploader("Choose a leaf image...", type=["jpg", "png", "jpeg"])
+# 4. Main App Logic
+uploaded_file = st.file_uploader("Upload leaf image", type=["jpg", "jpeg", "png"])
 
-if uploaded_file and model and class_names:
-    # --- IMAGE PROCESSING ---
+if uploaded_file and model:
+    # Process Image
     img = Image.open(uploaded_file).convert("RGB")
     img_resized = img.resize((224, 224))
     img_array = np.array(img_resized) / 255.0
-    img_batch = np.expand_dims(img_array, axis=0)
+    img_batch = np.expand_dims(img_array, axis=0).astype('float32')
 
-    # --- PREDICTION ---
-    with st.spinner("Analyzing leaf patterns..."):
-        preds = model.predict(img_batch, verbose=0)
-        pred_idx = np.argmax(preds)
-        disease = class_names[pred_idx]
-        confidence = np.max(preds) * 100
+    # Predict
+    try:
+        preds = model.predict({"input_layer": img_batch}, verbose=0)
+        idx = np.argmax(preds)
+        disease = class_names[idx]
+        conf = np.max(preds) * 100
 
-    # --- RESULTS DISPLAY ---
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        st.image(img, caption="Uploaded Image", width="stretch")
-        st.metric("Detected Status", disease, f"{confidence:.1f}% Match")
+        # UI Layout
+        col1, col2 = st.columns(2)
+        with col1:
+            st.image(img, caption=f"Diagnosis: {disease}", width="stretch")
+            st.metric("Confidence", f"{conf:.2f}%")
 
-    with col2:
-        # We use the specific DenseNet layer you identified earlier
-        heatmap = get_gradcam(img_batch, model, "relu")
-        
-        if heatmap is not None:
-            # Colorize and overlay
-            heatmap_resized = cv2.resize(heatmap, (img.size[0], img.size[1]))
-            heatmap_uint8 = np.uint8(255 * heatmap_resized)
-            heatmap_color = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
-            
-            # Convert BGR to RGB for Streamlit
-            heatmap_color_rgb = cv2.cvtColor(heatmap_color, cv2.COLOR_BGR2RGB)
-            
-            # Overlay original with heatmap (50% transparency)
-            overlayed_img = cv2.addWeighted(np.array(img), 0.6, heatmap_color_rgb, 0.4, 0)
-            st.image(overlayed_img, caption="AI Diagnosis Areas (Heatmap)", use_container_width=True)
-        else:
-            st.info("Visual explanation (Heatmap) not available for this model architecture.")
-
+        with col2:
+            heatmap = get_gradcam(img_batch, model)
+            if heatmap is not None:
+                heatmap_color = cv2.applyColorMap(np.uint8(255 * cv2.resize(heatmap, (img.size[0], img.size[1]))), cv2.COLORMAP_JET)
+                heatmap_rgb = cv2.cvtColor(heatmap_color, cv2.COLOR_BGR2RGB)
+                overlay = cv2.addWeighted(np.array(img), 0.6, heatmap_rgb, 0.4, 0)
+                st.image(overlay, caption="AI Focus Areas (Heatmap)", width="stretch")
+            else:
+                st.info("Heatmap could not be generated for this model architecture.")
     # --- AI ADVICE SECTION ---
     st.divider()
     if client:
