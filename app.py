@@ -84,11 +84,17 @@ def get_gradcam(img_batch, model, last_conv_layer_name):
         pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
         
         # Weighted sum of the feature map channels
-        conv_outputs = conv_outputs[0]
-        heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
-        heatmap = tf.squeeze(heatmap)
-        
-        # Normalize the heatmap between 0 and 1
+        # Weighted sum of the feature map channels
+        conv_outputs = conv_outputs[0]  # shape: (H, W, C)
+
+        # Multiply each channel by its corresponding weight
+        for i in range(conv_outputs.shape[-1]):
+            conv_outputs[..., i] *= pooled_grads[i]
+
+        # Average across channels to get the heatmap
+        heatmap = tf.reduce_mean(conv_outputs, axis=-1)
+
+        # Normalize between 0 and 1
         heatmap = tf.maximum(heatmap, 0) / (tf.math.reduce_max(heatmap) + 1e-10)
         return heatmap.numpy()
     except Exception as e:
@@ -122,7 +128,7 @@ if uploaded_file and model and class_names:
 
     with col2:
         # Ensure we target 'relu' as identified in your model summary
-        heatmap = get_gradcam(img_batch, model, "dense")
+        heatmap = get_gradcam(img_batch, model, "conv5_block16_2_conv")
         
         if heatmap is not None:
             # 1. Resize heatmap to match the original image size
@@ -140,7 +146,7 @@ if uploaded_file and model and class_names:
             
             st.image(overlayed_img, caption="AI Focus Areas (Heatmap)", width="stretch")
         else:
-            st.info("Visual explanation (Heatmap) not available. Check layer name 'relu'.")
+            st.info("Visual explanation (Heatmap) not available. Check layer name 'conv5_block16_2_conv'.")
 
     # --- AI ADVICE SECTION ---
     st.divider()
