@@ -61,47 +61,37 @@ except Exception as e:
 # 3. Grad-CAM Logic
 def get_gradcam(img_batch, model, last_conv_layer_name):
     try:
-        # Create a sub-model that outputs both the last conv layer and the final prediction
+        # Build a model that maps the input to activations of the last conv layer + predictions
         grad_model = tf.keras.models.Model(
-            inputs=model.inputs, 
+            inputs=model.inputs,
             outputs=[model.get_layer(last_conv_layer_name).output, model.output]
         )
-        
+
         with tf.GradientTape() as tape:
-            # IMPORTANT: Your model summary shows the input is named 'input_layer'
-            # We must pass the data as a dictionary to satisfy the Functional API
-            inputs = {"input_layer": tf.cast(img_batch, tf.float32)}
-            conv_outputs, predictions = grad_model(inputs)
-            
-            # Find the index of the highest predicted class
+            conv_outputs, predictions = grad_model(img_batch)
             class_idx = tf.argmax(predictions[0])
             loss = predictions[:, class_idx]
 
-        # Extract gradients for the winning class
+        # Compute gradients of the top predicted class wrt conv layer outputs
         grads = tape.gradient(loss, conv_outputs)
-        
-        # Average the gradients across the height and width (Global Average Pooling)
+
+        # Global average pooling of gradients (weights for each channel)
         pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
-        
-        # Weighted sum of the feature map channels
-        # Weighted sum of the feature map channels
-        conv_outputs = conv_outputs[0]  # shape: (H, W, C)
 
-        # Multiply each channel by its corresponding weight
-        for i in range(conv_outputs.shape[-1]):
-            conv_outputs[..., i] *= pooled_grads[i]
+        # Apply weights to feature maps
+        conv_outputs = conv_outputs[0]  # shape (H, W, C)
+        conv_outputs = conv_outputs * pooled_grads  # elementwise multiply, broadcasting works
 
-        # Average across channels to get the heatmap
+        # Average across channels to get heatmap
         heatmap = tf.reduce_mean(conv_outputs, axis=-1)
 
         # Normalize between 0 and 1
-        heatmap = tf.maximum(heatmap, 0) / (tf.math.reduce_max(heatmap) + 1e-10)
+        heatmap = tf.maximum(heatmap, 0) / (tf.reduce_max(heatmap) + 1e-10)
         return heatmap.numpy()
+
     except Exception as e:
-        # This will show you the exact error in the UI if it fails
         st.error(f"Grad-CAM detail: {e}")
         return None
-
 # 4. User Interface
 uploaded_file = st.file_uploader("Choose a leaf image...", type=["jpg", "png", "jpeg"])
 
